@@ -120,7 +120,7 @@ class FolderComparator(tk.Tk):
         self.update_comparison()
 
     def update_comparison(self) -> None:
-        """Escanea las carpetas seleccionadas y actualiza los árboles."""
+        """Escanea las carpetas seleccionadas y actualiza cada árbol por separado."""
         left_dir = self.left_path.get()
         right_dir = self.right_path.get()
 
@@ -133,24 +133,9 @@ class FolderComparator(tk.Tk):
 
         left_entries = self._scan_directory(left_dir)
         right_entries = self._scan_directory(right_dir)
-        combined, statuses = self._compare_entries(left_entries, right_entries)
 
-        self._populate_tree(
-            tree=self.left_tree,
-            base_path=left_dir,
-            side_entries=left_entries,
-            combined=combined,
-            statuses=statuses["left"],
-            side="left",
-        )
-        self._populate_tree(
-            tree=self.right_tree,
-            base_path=right_dir,
-            side_entries=right_entries,
-            combined=combined,
-            statuses=statuses["right"],
-            side="right",
-        )
+        self._populate_tree(tree=self.left_tree, base_path=left_dir, entries=left_entries)
+        self._populate_tree(tree=self.right_tree, base_path=right_dir, entries=right_entries)
 
     def _scan_directory(self, base_path: str) -> dict[str, dict[str, object]]:
         """Genera un diccionario con todos los elementos dentro de un directorio."""
@@ -171,63 +156,10 @@ class FolderComparator(tk.Tk):
                 entries[rel_path] = {"type": "file", "size": size}
         return entries
 
-    def _compare_entries(
-        self, left_entries: dict[str, dict[str, object]], right_entries: dict[str, dict[str, object]]
-    ) -> tuple[dict[str, dict[str, object]], dict[str, dict[str, str]]]:
-        """Compara dos diccionarios de entradas y devuelve datos combinados y estados."""
-        combined: dict[str, dict[str, object]] = {}
-        statuses: dict[str, dict[str, str]] = {"left": {}, "right": {}}
-
-        for path in sorted(set(left_entries) | set(right_entries)):
-            left_info = left_entries.get(path)
-            right_info = right_entries.get(path)
-            info = left_info or right_info
-            if info is None:
-                continue
-
-            entry_type = info["type"]
-            combined[path] = {"type": entry_type}
-
-            if entry_type == "file":
-                size_left = left_info.get("size") if left_info else None
-                size_right = right_info.get("size") if right_info else None
-                combined[path]["size_left"] = size_left
-                combined[path]["size_right"] = size_right
-
-                if left_info and right_info:
-                    status = "Coincide" if size_left == size_right else "Diferente"
-                    statuses["left"][path] = status
-                    statuses["right"][path] = status
-                elif left_info:
-                    statuses["left"][path] = "Solo izquierda"
-                    statuses["right"][path] = "No existe"
-                else:
-                    statuses["left"][path] = "No existe"
-                    statuses["right"][path] = "Solo derecha"
-            else:
-                if left_info and right_info:
-                    status = "Coincide"
-                    statuses["left"][path] = status
-                    statuses["right"][path] = status
-                elif left_info:
-                    statuses["left"][path] = "Solo izquierda"
-                    statuses["right"][path] = "No existe"
-                else:
-                    statuses["left"][path] = "No existe"
-                    statuses["right"][path] = "Solo derecha"
-
-        return combined, statuses
-
     def _populate_tree(
-        self,
-        tree: ttk.Treeview,
-        base_path: str,
-        side_entries: dict[str, dict[str, object]],
-        combined: dict[str, dict[str, object]],
-        statuses: dict[str, str],
-        side: str,
+        self, tree: ttk.Treeview, base_path: str, entries: dict[str, dict[str, object]]
     ) -> None:
-        """Llena el Treeview con los resultados de comparación."""
+        """Llena el Treeview con las entradas de un solo directorio."""
         tree.delete(*tree.get_children())
 
         root_label = os.path.basename(base_path.rstrip(os.sep)) or base_path
@@ -241,7 +173,7 @@ class FolderComparator(tk.Tk):
 
         parent_ids: dict[str, str] = {"": root_id}
         sorted_paths = sorted(
-            (path for path in combined if path != ""), key=lambda p: (p.count(os.sep), p)
+            (path for path in entries if path != ""), key=lambda p: (p.count(os.sep), p)
         )
 
         for path in sorted_paths:
@@ -249,19 +181,11 @@ class FolderComparator(tk.Tk):
             name = os.path.basename(path)
             parent_id = parent_ids.get(parent_path, root_id)
 
-            info = combined[path]
-            entry_info = side_entries.get(path)
-            status = statuses.get(path, "")
+            info = entries[path]
             item_type = "Carpeta" if info["type"] == "dir" else "Archivo"
 
             if info["type"] == "file":
-                size_value = (
-                    entry_info.get("size")
-                    if entry_info
-                    else info.get("size_left")
-                    if side == "left"
-                    else info.get("size_right")
-                )
+                size_value = info.get("size")
                 size_display = f"{size_value} B" if isinstance(size_value, int) else "-"
             else:
                 size_display = "-"
@@ -270,7 +194,7 @@ class FolderComparator(tk.Tk):
                 parent_id,
                 "end",
                 text=name,
-                values=(status, item_type, size_display),
+                values=("", item_type, size_display),
                 open=False,
             )
             parent_ids[path] = node_id
