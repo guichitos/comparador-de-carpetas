@@ -7,6 +7,7 @@ coincide o es diferente en tamaño) y el tamaño para los archivos cuando
 está disponible.
 """
 
+import json
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
@@ -92,8 +93,22 @@ class FolderComparator(tk.Tk):
 
         actions_frame = ttk.Frame(self, padding=10)
         actions_frame.grid(row=2, column=0, sticky="ew")
-        ttk.Button(actions_frame, text="Comparar ahora", command=self.update_comparison).pack(
-            anchor="e"
+        actions_frame.columnconfigure(0, weight=1)
+        actions_frame.columnconfigure(1, weight=1)
+        actions_frame.columnconfigure(2, weight=1)
+
+        ttk.Button(
+            actions_frame,
+            text="Exportar izquierda",
+            command=lambda: self._export_directory("left"),
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Button(
+            actions_frame,
+            text="Exportar derecha",
+            command=lambda: self._export_directory("right"),
+        ).grid(row=0, column=1, sticky="w")
+        ttk.Button(actions_frame, text="Comparar ahora", command=self.update_comparison).grid(
+            row=0, column=2, sticky="e"
         )
 
         self.rowconfigure(1, weight=1)
@@ -305,6 +320,72 @@ class FolderComparator(tk.Tk):
         widget.delete("1.0", tk.END)
         widget.insert("1.0", text)
         widget.configure(state="disabled")
+
+    def _export_directory(self, side: str) -> None:
+        """Exporta el contenido de una carpeta a un archivo JSON."""
+
+        if side == "left":
+            base_path = self.left_path.get()
+            label = "izquierda"
+        else:
+            base_path = self.right_path.get()
+            label = "derecha"
+
+        if not base_path:
+            messagebox.showinfo(
+                "Seleccione carpeta",
+                f"Seleccione la carpeta {label} antes de exportar su contenido.",
+            )
+            return
+
+        if not os.path.isdir(base_path):
+            messagebox.showerror(
+                "Ruta inválida",
+                f"La ruta de la carpeta {label} no existe o no es válida.",
+            )
+            return
+
+        save_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("Archivos JSON", "*.json"), ("Todos los archivos", "*.*")],
+            initialfile=f"{os.path.basename(base_path) or 'carpeta'}.json",
+            title="Guardar contenido como JSON",
+        )
+        if not save_path:
+            return
+
+        export_data = self._build_export_data(base_path)
+
+        try:
+            with open(save_path, "w", encoding="utf-8") as outfile:
+                json.dump(export_data, outfile, ensure_ascii=False, indent=2)
+        except OSError as exc:
+            messagebox.showerror("Error al guardar", f"No se pudo guardar el archivo: {exc}")
+            return
+
+        messagebox.showinfo(
+            "Exportación completada",
+            f"Se exportó el contenido de la carpeta {label} a:\n{save_path}",
+        )
+
+    def _build_export_data(self, base_path: str) -> dict[str, object]:
+        """Prepara la estructura JSON con el contenido de un directorio."""
+
+        entries = self._scan_directory(base_path)
+        export_entries = []
+        for rel_path, info in sorted(entries.items()):
+            export_entries.append(
+                {
+                    "ruta": rel_path or ".",
+                    "tipo": "carpeta" if info["type"] == "dir" else "archivo",
+                    "tamano": info.get("size") if info["type"] == "file" else None,
+                }
+            )
+
+        return {
+            "carpeta": base_path,
+            "entradas": export_entries,
+        }
 
 
 def main() -> None:
