@@ -9,7 +9,7 @@ está disponible.
 
 import os
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 
 class FolderComparator(tk.Tk):
@@ -22,6 +22,11 @@ class FolderComparator(tk.Tk):
 
         self.left_path = tk.StringVar()
         self.right_path = tk.StringVar()
+
+        self.left_item_paths: dict[str, str] = {}
+        self.right_item_paths: dict[str, str] = {}
+        self.left_base_path: str | None = None
+        self.right_base_path: str | None = None
 
         self._build_layout()
 
@@ -69,16 +74,21 @@ class FolderComparator(tk.Tk):
 
         left_container = ttk.Frame(trees_frame)
         left_container.grid(row=1, column=0, sticky="nsew", padx=(0, 8))
-        left_container.rowconfigure(0, weight=1)
+        left_container.rowconfigure(0, weight=3)
+        left_container.rowconfigure(1, weight=1)
         left_container.columnconfigure(0, weight=1)
 
         right_container = ttk.Frame(trees_frame)
         right_container.grid(row=1, column=1, sticky="nsew", padx=(8, 0))
-        right_container.rowconfigure(0, weight=1)
+        right_container.rowconfigure(0, weight=3)
+        right_container.rowconfigure(1, weight=1)
         right_container.columnconfigure(0, weight=1)
 
         self.left_tree = self._create_tree(left_container)
         self.right_tree = self._create_tree(right_container)
+
+        self.left_preview = self._create_preview(left_container)
+        self.right_preview = self._create_preview(right_container)
 
         actions_frame = ttk.Frame(self, padding=10)
         actions_frame.grid(row=2, column=0, sticky="ew")
@@ -106,7 +116,17 @@ class FolderComparator(tk.Tk):
         scrollbar = ttk.Scrollbar(master, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
         scrollbar.grid(row=0, column=1, sticky="ns")
+
+        tree.bind("<<TreeviewSelect>>", self._on_selection_change)
         return tree
+
+    def _create_preview(self, master: tk.Misc) -> scrolledtext.ScrolledText:
+        """Crea un área de texto para previsualizar archivos."""
+
+        preview = scrolledtext.ScrolledText(master, height=8, wrap="word")
+        preview.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+        preview.configure(state="disabled")
+        return preview
 
     def _select_directory(self, side: str) -> None:
         """Abre un diálogo para seleccionar directorios y actualiza la vista."""
@@ -134,8 +154,27 @@ class FolderComparator(tk.Tk):
         left_entries = self._scan_directory(left_dir)
         right_entries = self._scan_directory(right_dir)
 
-        self._populate_tree(tree=self.left_tree, base_path=left_dir, entries=left_entries)
-        self._populate_tree(tree=self.right_tree, base_path=right_dir, entries=right_entries)
+        self.left_base_path = left_dir
+        self.right_base_path = right_dir
+
+        self.left_item_paths = {}
+        self.right_item_paths = {}
+
+        self._populate_tree(
+            tree=self.left_tree,
+            base_path=left_dir,
+            entries=left_entries,
+            path_store=self.left_item_paths,
+        )
+        self._populate_tree(
+            tree=self.right_tree,
+            base_path=right_dir,
+            entries=right_entries,
+            path_store=self.right_item_paths,
+        )
+
+        self._clear_preview(self.left_preview)
+        self._clear_preview(self.right_preview)
 
     def _scan_directory(self, base_path: str) -> dict[str, dict[str, object]]:
         """Genera un diccionario con todos los elementos dentro de un directorio."""
@@ -157,7 +196,11 @@ class FolderComparator(tk.Tk):
         return entries
 
     def _populate_tree(
-        self, tree: ttk.Treeview, base_path: str, entries: dict[str, dict[str, object]]
+        self,
+        tree: ttk.Treeview,
+        base_path: str,
+        entries: dict[str, dict[str, object]],
+        path_store: dict[str, str],
     ) -> None:
         """Llena el Treeview con las entradas de un solo directorio."""
         tree.delete(*tree.get_children())
@@ -172,6 +215,8 @@ class FolderComparator(tk.Tk):
         )
 
         parent_ids: dict[str, str] = {"": root_id}
+        path_store.clear()
+        path_store[root_id] = ""
         sorted_paths = sorted(
             (path for path in entries if path != ""), key=lambda p: (p.count(os.sep), p)
         )
@@ -198,6 +243,68 @@ class FolderComparator(tk.Tk):
                 open=False,
             )
             parent_ids[path] = node_id
+            path_store[node_id] = path
+
+    def _on_selection_change(self, event: tk.Event) -> None:
+        """Muestra el archivo seleccionado en el panel inferior correspondiente."""
+
+        tree = event.widget
+        if tree not in (self.left_tree, self.right_tree):
+            return
+
+        item_id = tree.selection()
+        if not item_id:
+            return
+        selected_id = item_id[0]
+
+        if tree is self.left_tree:
+            base_path = self.left_base_path
+            path_store = self.left_item_paths
+            preview = self.left_preview
+        else:
+            base_path = self.right_base_path
+            path_store = self.right_item_paths
+            preview = self.right_preview
+
+        if base_path is None:
+            return
+
+        rel_path = path_store.get(selected_id)
+        if rel_path is None:
+            self._clear_preview(preview)
+            return
+
+        full_path = os.path.join(base_path, rel_path) if rel_path else base_path
+        if os.path.isdir(full_path):
+            self._show_message(preview, "Seleccione un archivo para previsualizar su contenido.")
+            return
+
+        try:
+            with open(full_path, "r", encoding="utf-8", errors="replace") as file:
+                content = file.read()
+        except OSError as exc:
+            self._show_message(preview, f"No se pudo leer el archivo: {exc}")
+            return
+
+        self._set_preview_text(preview, content)
+
+    def _clear_preview(self, widget: scrolledtext.ScrolledText) -> None:
+        """Limpia el texto de la previsualización."""
+
+        self._set_preview_text(widget, "")
+
+    def _show_message(self, widget: scrolledtext.ScrolledText, message: str) -> None:
+        """Muestra un mensaje informativo en el panel de previsualización."""
+
+        self._set_preview_text(widget, message)
+
+    def _set_preview_text(self, widget: scrolledtext.ScrolledText, text: str) -> None:
+        """Actualiza el contenido del cuadro de texto de forma segura."""
+
+        widget.configure(state="normal")
+        widget.delete("1.0", tk.END)
+        widget.insert("1.0", text)
+        widget.configure(state="disabled")
 
 
 def main() -> None:
