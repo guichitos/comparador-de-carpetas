@@ -24,6 +24,9 @@ class FolderComparator(tk.Tk):
         self.left_path = tk.StringVar()
         self.right_path = tk.StringVar()
 
+        self.left_title = tk.StringVar(value="Carpeta izquierda (sin seleccionar)")
+        self.right_title = tk.StringVar(value="Carpeta derecha (sin seleccionar)")
+
         self.left_item_paths: dict[str, str] = {}
         self.right_item_paths: dict[str, str] = {}
         self.left_base_path: str | None = None
@@ -66,12 +69,16 @@ class FolderComparator(tk.Tk):
         trees_frame.columnconfigure(1, weight=1)
         trees_frame.rowconfigure(1, weight=1)
 
-        ttk.Label(trees_frame, text="Carpeta izquierda", font=("TkDefaultFont", 10, "bold")).grid(
-            row=0, column=0, sticky="w"
-        )
-        ttk.Label(trees_frame, text="Carpeta derecha", font=("TkDefaultFont", 10, "bold")).grid(
-            row=0, column=1, sticky="w"
-        )
+        ttk.Label(
+            trees_frame,
+            textvariable=self.left_title,
+            font=("TkDefaultFont", 10, "bold"),
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            trees_frame,
+            textvariable=self.right_title,
+            font=("TkDefaultFont", 10, "bold"),
+        ).grid(row=0, column=1, sticky="w")
 
         left_container = ttk.Frame(trees_frame)
         left_container.grid(row=1, column=0, sticky="nsew", padx=(0, 8))
@@ -152,6 +159,7 @@ class FolderComparator(tk.Tk):
             self.left_path.set(selected)
         else:
             self.right_path.set(selected)
+        self._update_tree_title(side)
         self.update_comparison()
 
     def update_comparison(self) -> None:
@@ -165,6 +173,16 @@ class FolderComparator(tk.Tk):
                 "Seleccione tanto la carpeta izquierda como la derecha para comparar.",
             )
             return
+
+        if not os.path.isdir(left_dir) or not os.path.isdir(right_dir):
+            messagebox.showerror(
+                "Ruta inválida",
+                "Verifique que ambas rutas correspondan a carpetas existentes.",
+            )
+            return
+
+        self._update_tree_title("left")
+        self._update_tree_title("right")
 
         left_entries = self._scan_directory(left_dir)
         right_entries = self._scan_directory(right_dir)
@@ -190,6 +208,24 @@ class FolderComparator(tk.Tk):
 
         self._clear_preview(self.left_preview)
         self._clear_preview(self.right_preview)
+
+    def _update_tree_title(self, side: str) -> None:
+        """Muestra el nombre de la carpeta seleccionada sobre el árbol correspondiente."""
+
+        if side == "left":
+            path = self.left_path.get()
+            title_var = self.left_title
+            label = "Carpeta izquierda"
+        else:
+            path = self.right_path.get()
+            title_var = self.right_title
+            label = "Carpeta derecha"
+
+        if path:
+            folder_name = os.path.basename(path.rstrip(os.sep)) or path
+            title_var.set(f"{label}: {folder_name}")
+        else:
+            title_var.set(f"{label} (sin seleccionar)")
 
     def _scan_directory(self, base_path: str) -> dict[str, dict[str, object]]:
         """Genera un diccionario con todos los elementos dentro de un directorio."""
