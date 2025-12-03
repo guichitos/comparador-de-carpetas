@@ -35,6 +35,8 @@ class FolderComparator(tk.Tk):
         self.comparison_data: dict[str, dict[str, object]] = {}
         self.difference_paths: set[str] = set()
         self.show_differences_only = tk.BooleanVar(value=False)
+        self.debug_enabled = tk.BooleanVar(value=True)
+        self._debug_sample_limit = 15
 
         self._last_left_entries: dict[str, dict[str, object]] | None = None
         self._last_right_entries: dict[str, dict[str, object]] | None = None
@@ -132,7 +134,31 @@ class FolderComparator(tk.Tk):
             command=self._on_filter_change,
         ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
+        debug_frame = ttk.Frame(self, padding=(10, 0, 10, 10))
+        debug_frame.grid(row=3, column=0, sticky="nsew")
+        debug_frame.columnconfigure(0, weight=1)
+        debug_frame.rowconfigure(1, weight=1)
+
+        controls = ttk.Frame(debug_frame)
+        controls.grid(row=0, column=0, sticky="ew")
+        controls.columnconfigure(2, weight=1)
+
+        ttk.Label(controls, text="Depuración:").grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(
+            controls,
+            text="Mostrar logs en la app",
+            variable=self.debug_enabled,
+        ).grid(row=0, column=1, sticky="w", padx=(6, 0))
+        ttk.Button(controls, text="Limpiar", command=self._clear_debug_log).grid(
+            row=0, column=3, sticky="e"
+        )
+
+        self.debug_text = scrolledtext.ScrolledText(debug_frame, height=6, wrap="word")
+        self.debug_text.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
+        self.debug_text.configure(state="disabled")
+
         self.rowconfigure(1, weight=1)
+        self.rowconfigure(3, weight=1)
 
     def _create_tree(self, master: tk.Misc) -> ttk.Treeview:
         """Crea un Treeview con columnas de estado, tipo y tamaño."""
@@ -209,6 +235,10 @@ class FolderComparator(tk.Tk):
 
         self._last_left_entries = left_entries
         self._last_right_entries = right_entries
+        self._log_debug(
+            f"Escaneo completado. Izquierda: {len(left_entries)} entradas, "
+            f"Derecha: {len(right_entries)} entradas."
+        )
         self.comparison_data, self.difference_paths = self._build_comparison(
             left_entries, right_entries
         )
@@ -224,6 +254,11 @@ class FolderComparator(tk.Tk):
         if self._last_left_entries is None or self._last_right_entries is None:
             self.update_comparison()
             return
+
+        self._log_debug(
+            "Cambio de filtro: Mostrar solo diferencias = "
+            f"{self.show_differences_only.get()}"
+        )
 
         self._refresh_trees()
 
@@ -257,12 +292,29 @@ class FolderComparator(tk.Tk):
         """Devuelve las entradas ya comparadas respetando el filtro de diferencias."""
 
         if not self.show_differences_only.get():
+            self._log_debug(
+                f"Filtro desactivado: se muestran todas las {len(entries)} entradas."
+            )
             return entries
 
         filtered: dict[str, dict[str, object]] = {}
+        skipped_samples: list[str] = []
         for path, info in entries.items():
             if path == "" or self._is_path_relevant(path):
                 filtered[path] = info
+            elif len(skipped_samples) < self._debug_sample_limit:
+                status = self.comparison_data.get(path, {})
+                skipped_samples.append(f"{path} -> {status}")
+
+        self._log_debug(
+            "Filtro activado: conservadas "
+            f"{len(filtered)} de {len(entries)} entradas."
+        )
+        if skipped_samples:
+            self._log_debug(
+                "Ejemplos de rutas omitidas por coincidir en ambos lados:\n"
+                + "\n".join(skipped_samples)
+            )
         return filtered
 
     def _is_path_relevant(self, path: str) -> bool:
@@ -364,6 +416,10 @@ class FolderComparator(tk.Tk):
             parent_ids[path] = node_id
             path_store[node_id] = path
 
+        self._log_debug(
+            f"Árbol {side}: {len(path_store)} nodos insertados (incluye la raíz)."
+        )
+
     def _get_status_for_side(self, path: str, side: str) -> str:
         """Devuelve el estado calculado para un elemento en el árbol indicado."""
 
@@ -405,6 +461,12 @@ class FolderComparator(tk.Tk):
                 differing_paths.add(parent)
                 parent = self._parent_path(parent)
 
+        sample = sorted(differing_paths)[: self._debug_sample_limit]
+        self._log_debug(
+            f"Comparación calculada: {len(comparison)} rutas evaluadas, "
+            f"{len(differing_paths)} marcadas como relevantes. "
+            f"Ejemplos: {sample}"
+        )
         return comparison, differing_paths
 
     def _determine_status(
@@ -447,6 +509,25 @@ class FolderComparator(tk.Tk):
 
         parent = os.path.dirname(path)
         return parent if parent != path else None
+
+    def _clear_debug_log(self) -> None:
+        """Borra el cuadro de log de depuración."""
+
+        self.debug_text.configure(state="normal")
+        self.debug_text.delete("1.0", tk.END)
+        self.debug_text.configure(state="disabled")
+
+    def _log_debug(self, message: str) -> None:
+        """Envía mensajes de depuración al cuadro de texto y a la consola."""
+
+        print(f"[DEBUG] {message}")
+        if not self.debug_enabled.get():
+            return
+
+        self.debug_text.configure(state="normal")
+        self.debug_text.insert(tk.END, message + "\n")
+        self.debug_text.see(tk.END)
+        self.debug_text.configure(state="disabled")
 
     def _on_selection_change(self, event: tk.Event) -> None:
         """Muestra el archivo seleccionado en el panel inferior correspondiente."""
