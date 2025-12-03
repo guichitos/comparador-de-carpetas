@@ -1,56 +1,25 @@
-"""Explora una carpeta en busca de temas y muestra sus claves y valores.
+"""Explora carpetas ``theme/theme`` y extrae el contenido de ``<a:extLst>``.
 
 Uso:
-    python extractor_temas.py /ruta/a/la/carpeta
+    python extractor_temas.py
 
-El script localiza subcarpetas con la estructura ``theme/theme`` y, en cada
-una de ellas, abre el archivo ``theme1.xml``. Para cada archivo encontrado se
-imprime su ruta y se enumeran los elementos del XML con su llave (ruta de
-etiquetas y atributo ``name`` si existe) y su contenido de texto.
+El script solicita al usuario seleccionar una carpeta mediante un diálogo de
+Tkinter. A partir de esa ruta busca subcarpetas con la estructura
+``theme/theme`` y, en cada una de ellas, abre el archivo ``theme1.xml``. Para
+cada archivo encontrado imprime la ruta y muestra el contenido del elemento
+``<a:extLst>`` si existe.
 """
 from __future__ import annotations
 
-import argparse
 import os
 import sys
+import tkinter as tk
+from tkinter import filedialog
 import xml.etree.ElementTree as ET
-from typing import Iterable, Tuple
 
-
-KeyValue = Tuple[str, str]
-
-
-def build_key_paths(element: ET.Element, prefix: str | None = None) -> Iterable[KeyValue]:
-    """Itera sobre los elementos descendientes devolviendo la llave y el texto.
-
-    La "llave" incluye el nombre de la etiqueta y, si el elemento tiene el
-    atributo ``name``, se agrega para facilitar la identificación. Cada nivel
-    se separa con ``/`` para reflejar la jerarquía.
-    """
-
-    label = element.tag
-    name_attr = element.get("name")
-    if name_attr:
-        label = f"{label}[name={name_attr}]"
-
-    current_path = f"{prefix}/{label}" if prefix else label
-    text = (element.text or "").strip()
-    if text:
-        yield current_path, text
-
-    for child in element:
-        yield from build_key_paths(child, current_path)
-
-
-def parse_theme_file(file_path: str) -> list[KeyValue]:
-    """Carga un ``theme1.xml`` y devuelve las llaves con su contenido."""
-    try:
-        tree = ET.parse(file_path)
-    except ET.ParseError as exc:
-        raise SystemExit(f"No se pudo parsear {file_path}: {exc}") from exc
-
-    root = tree.getroot()
-    return list(build_key_paths(root))
+# Nombre de la etiqueta a extraer, configurable si en el futuro se desea buscar
+# otra clave concreta.
+TARGET_TAG = "a:extLst"
 
 
 def find_theme_files(base_dir: str) -> Iterable[str]:
@@ -65,30 +34,49 @@ def find_theme_files(base_dir: str) -> Iterable[str]:
             yield os.path.join(current_root, "theme1.xml")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Busca carpetas theme/theme dentro de una ruta dada y muestra el contenido "
-            "de cada theme1.xml"
-        )
-    )
-    parser.add_argument(
-        "ruta",
-        help="Carpeta raíz donde buscar temas",
-    )
-    args = parser.parse_args()
+def get_target_elements(file_path: str) -> list[str]:
+    """Carga un ``theme1.xml`` y devuelve el contenido de ``TARGET_TAG``."""
+    try:
+        tree = ET.parse(file_path)
+    except ET.ParseError as exc:
+        raise SystemExit(f"No se pudo parsear {file_path}: {exc}") from exc
 
-    base_dir = args.ruta
+    root = tree.getroot()
+    matches: list[str] = []
+    for element in root.iter():
+        tag_without_ns = element.tag.split("}", maxsplit=1)[-1]
+        if tag_without_ns == TARGET_TAG or tag_without_ns == TARGET_TAG.split(":")[-1]:
+            matches.append(ET.tostring(element, encoding="unicode"))
+    return matches
+
+
+def select_base_dir() -> str | None:
+    """Abre un diálogo para seleccionar la carpeta base."""
+    root = tk.Tk()
+    root.withdraw()
+    return filedialog.askdirectory(title="Selecciona la carpeta raíz de búsqueda")
+
+
+def main() -> int:
+    base_dir = select_base_dir()
+    if not base_dir:
+        print("No se seleccionó ninguna carpeta.", file=sys.stderr)
+        return 1
+
     if not os.path.isdir(base_dir):
-        print(f"La ruta proporcionada no es una carpeta válida: {base_dir}", file=sys.stderr)
+        print(f"La ruta seleccionada no es una carpeta válida: {base_dir}", file=sys.stderr)
         return 1
 
     found = False
     for theme_file in find_theme_files(base_dir):
         found = True
         print(f"Tema encontrado en: {theme_file}")
-        for key, value in parse_theme_file(theme_file):
-            print(f"  - {key}: {value}")
+        contents = get_target_elements(theme_file)
+        if not contents:
+            print(f"  - No se encontró la etiqueta {TARGET_TAG} en el archivo.")
+        else:
+            for content in contents:
+                print(f"  - {TARGET_TAG}: {content}")
         print()
 
     if not found:
