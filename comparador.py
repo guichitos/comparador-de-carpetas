@@ -2,9 +2,9 @@
 
 El programa usa Tkinter para permitir que el usuario seleccione dos
 carpetas y presenta sus árboles de directorios lado a lado. Cada nodo
-muestra su estado respecto a la carpeta opuesta (solo en un lado,
-coincide o es diferente en tamaño) y el tamaño para los archivos cuando
-está disponible.
+muestra su estado respecto a la carpeta opuesta (solo en un lado o
+coincide por nombre) y el tamaño para los archivos cuando está
+disponible.
 """
 
 import json
@@ -427,7 +427,12 @@ class FolderComparator(tk.Tk):
         if not data:
             return ""
 
+        differs = bool(data.get("differs"))
         status = data.get(f"status_{side}")
+
+        if not differs and path in self.difference_paths:
+            return "Contiene diferencias"
+
         return status if isinstance(status, str) else ""
 
     def _build_comparison(
@@ -480,17 +485,8 @@ class FolderComparator(tk.Tk):
             if left_info["type"] != right_info["type"]:
                 return "Tipo distinto", "Tipo distinto", True
 
-            if left_info["type"] == "file":
-                left_size = left_info.get("size")
-                right_size = right_info.get("size")
-
-                if isinstance(left_size, int) and isinstance(right_size, int):
-                    if left_size == right_size:
-                        return "Coincide", "Coincide", False
-                    return "Tamaño diferente", "Tamaño diferente", True
-
-                return "Coincide", "Coincide", False
-
+            # Si existe en ambos lados con el mismo tipo, se considera que coincide
+            # por nombre (tamaño solo se muestra a modo informativo).
             return "Coincide", "Coincide", False
 
         if left_info:
