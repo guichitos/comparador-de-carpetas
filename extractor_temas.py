@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import Iterable
 import tkinter as tk
 from tkinter import filedialog
 import xml.etree.ElementTree as ET
