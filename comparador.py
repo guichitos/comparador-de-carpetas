@@ -261,9 +261,16 @@ class FolderComparator(tk.Tk):
 
         filtered: dict[str, dict[str, object]] = {}
         for path, info in entries.items():
-            if path == "" or path in self.difference_paths:
+            if path == "" or self._is_path_relevant(path):
                 filtered[path] = info
         return filtered
+
+    def _is_path_relevant(self, path: str) -> bool:
+        """Indica si una ruta debe mostrarse cuando se piden solo diferencias."""
+
+        comparison_info = self.comparison_data.get(path)
+        differs = bool(comparison_info and comparison_info.get("differs"))
+        return differs or path in self.difference_paths
 
     def _update_tree_title(self, side: str) -> None:
         """Muestra el nombre de la carpeta seleccionada sobre el árbol correspondiente."""
@@ -330,7 +337,7 @@ class FolderComparator(tk.Tk):
         )
 
         for path in sorted_paths:
-            if self.show_differences_only.get() and path not in self.difference_paths:
+            if self.show_differences_only.get() and not self._is_path_relevant(path):
                 continue
 
             parent_path = os.path.dirname(path)
