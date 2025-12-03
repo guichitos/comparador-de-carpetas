@@ -36,6 +36,9 @@ class FolderComparator(tk.Tk):
         self.difference_paths: set[str] = set()
         self.show_differences_only = tk.BooleanVar(value=False)
 
+        self._last_left_entries: dict[str, dict[str, object]] | None = None
+        self._last_right_entries: dict[str, dict[str, object]] | None = None
+
         self._build_layout()
 
     def _build_layout(self) -> None:
@@ -126,7 +129,7 @@ class FolderComparator(tk.Tk):
             actions_frame,
             text="Mostrar solo diferencias",
             variable=self.show_differences_only,
-            command=self.update_comparison,
+            command=self._on_filter_change,
         ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         self.rowconfigure(1, weight=1)
@@ -204,27 +207,63 @@ class FolderComparator(tk.Tk):
         self.left_item_paths = {}
         self.right_item_paths = {}
 
+        self._last_left_entries = left_entries
+        self._last_right_entries = right_entries
         self.comparison_data, self.difference_paths = self._build_comparison(
             left_entries, right_entries
         )
 
+        self._refresh_trees()
+
+        self._clear_preview(self.left_preview)
+        self._clear_preview(self.right_preview)
+
+    def _on_filter_change(self) -> None:
+        """Aplica el filtro sin requerir un reescaneo si ya hay datos cargados."""
+
+        if self._last_left_entries is None or self._last_right_entries is None:
+            self.update_comparison()
+            return
+
+        self._refresh_trees()
+
+    def _refresh_trees(self) -> None:
+        """Puebla ambos árboles usando los datos de la última comparación."""
+
+        if self._last_left_entries is None or self._last_right_entries is None:
+            return
+
+        filtered_left = self._filter_entries_for_display(self._last_left_entries)
+        filtered_right = self._filter_entries_for_display(self._last_right_entries)
+
         self._populate_tree(
             tree=self.left_tree,
-            base_path=left_dir,
-            entries=left_entries,
+            base_path=self.left_base_path or "",
+            entries=filtered_left,
             path_store=self.left_item_paths,
             side="left",
         )
         self._populate_tree(
             tree=self.right_tree,
-            base_path=right_dir,
-            entries=right_entries,
+            base_path=self.right_base_path or "",
+            entries=filtered_right,
             path_store=self.right_item_paths,
             side="right",
         )
 
-        self._clear_preview(self.left_preview)
-        self._clear_preview(self.right_preview)
+    def _filter_entries_for_display(
+        self, entries: dict[str, dict[str, object]]
+    ) -> dict[str, dict[str, object]]:
+        """Devuelve las entradas ya comparadas respetando el filtro de diferencias."""
+
+        if not self.show_differences_only.get():
+            return entries
+
+        filtered: dict[str, dict[str, object]] = {}
+        for path, info in entries.items():
+            if path == "" or path in self.difference_paths:
+                filtered[path] = info
+        return filtered
 
     def _update_tree_title(self, side: str) -> None:
         """Muestra el nombre de la carpeta seleccionada sobre el árbol correspondiente."""
