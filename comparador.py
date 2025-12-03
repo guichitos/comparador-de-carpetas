@@ -32,6 +32,9 @@ class FolderComparator(tk.Tk):
         self.right_item_paths: dict[str, str] = {}
         self.left_base_path: str | None = None
         self.right_base_path: str | None = None
+        self.comparison_data: dict[str, dict[str, object]] = {}
+        self.difference_paths: set[str] = set()
+        self.show_differences_only = tk.BooleanVar(value=False)
 
         self._build_layout()
 
@@ -119,6 +122,13 @@ class FolderComparator(tk.Tk):
             row=0, column=2, sticky="e"
         )
 
+        ttk.Checkbutton(
+            actions_frame,
+            text="Mostrar solo diferencias",
+            variable=self.show_differences_only,
+            command=self.update_comparison,
+        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
+
         self.rowconfigure(1, weight=1)
 
     def _create_tree(self, master: tk.Misc) -> ttk.Treeview:
@@ -194,17 +204,23 @@ class FolderComparator(tk.Tk):
         self.left_item_paths = {}
         self.right_item_paths = {}
 
+        self.comparison_data, self.difference_paths = self._build_comparison(
+            left_entries, right_entries
+        )
+
         self._populate_tree(
             tree=self.left_tree,
             base_path=left_dir,
             entries=left_entries,
             path_store=self.left_item_paths,
+            side="left",
         )
         self._populate_tree(
             tree=self.right_tree,
             base_path=right_dir,
             entries=right_entries,
             path_store=self.right_item_paths,
+            side="right",
         )
 
         self._clear_preview(self.left_preview)
@@ -253,6 +269,7 @@ class FolderComparator(tk.Tk):
         base_path: str,
         entries: dict[str, dict[str, object]],
         path_store: dict[str, str],
+        side: str,
     ) -> None:
         """Llena el Treeview con las entradas de un solo directorio."""
         tree.delete(*tree.get_children())
@@ -274,6 +291,9 @@ class FolderComparator(tk.Tk):
         )
 
         for path in sorted_paths:
+            if self.show_differences_only.get() and path not in self.difference_paths:
+                continue
+
             parent_path = os.path.dirname(path)
             name = os.path.basename(path)
             parent_id = parent_ids.get(parent_path, root_id)
@@ -281,6 +301,7 @@ class FolderComparator(tk.Tk):
             info = entries[path]
             item_type = "Carpeta" if info["type"] == "dir" else "Archivo"
 
+            status = self._get_status_for_side(path, side)
             if info["type"] == "file":
                 size_value = info.get("size")
                 size_display = f"{size_value} B" if isinstance(size_value, int) else "-"
@@ -291,11 +312,95 @@ class FolderComparator(tk.Tk):
                 parent_id,
                 "end",
                 text=name,
-                values=("", item_type, size_display),
+                values=(status, item_type, size_display),
                 open=False,
             )
             parent_ids[path] = node_id
             path_store[node_id] = path
+
+    def _get_status_for_side(self, path: str, side: str) -> str:
+        """Devuelve el estado calculado para un elemento en el árbol indicado."""
+
+        data = self.comparison_data.get(path)
+        if not data:
+            return ""
+
+        status = data.get(f"status_{side}")
+        return status if isinstance(status, str) else ""
+
+    def _build_comparison(
+        self,
+        left_entries: dict[str, dict[str, object]],
+        right_entries: dict[str, dict[str, object]],
+    ) -> tuple[dict[str, dict[str, object]], set[str]]:
+        """Compara dos diccionarios de entradas y marca diferencias por ruta."""
+
+        comparison: dict[str, dict[str, object]] = {}
+        differing_paths: set[str] = set()
+        all_paths = set(left_entries) | set(right_entries)
+
+        for path in all_paths:
+            left_info = left_entries.get(path)
+            right_info = right_entries.get(path)
+
+            status_left, status_right, differs = self._determine_status(left_info, right_info)
+            comparison[path] = {
+                "status_left": status_left,
+                "status_right": status_right,
+                "differs": differs,
+            }
+
+            if differs:
+                differing_paths.add(path)
+
+        for path in list(differing_paths):
+            parent = self._parent_path(path)
+            while parent is not None:
+                differing_paths.add(parent)
+                parent = self._parent_path(parent)
+
+        return comparison, differing_paths
+
+    def _determine_status(
+        self,
+        left_info: dict[str, object] | None,
+        right_info: dict[str, object] | None,
+    ) -> tuple[str, str, bool]:
+        """Calcula el estado de cada lado para una ruta determinada."""
+
+        if left_info and right_info:
+            if left_info["type"] != right_info["type"]:
+                return "Tipo distinto", "Tipo distinto", True
+
+            if left_info["type"] == "file":
+                left_size = left_info.get("size")
+                right_size = right_info.get("size")
+
+                if isinstance(left_size, int) and isinstance(right_size, int):
+                    if left_size == right_size:
+                        return "Coincide", "Coincide", False
+                    return "Tamaño diferente", "Tamaño diferente", True
+
+                return "Coincide", "Coincide", False
+
+            return "Coincide", "Coincide", False
+
+        if left_info:
+            return "Solo izquierda", "No existe", True
+
+        if right_info:
+            return "No existe", "Solo derecha", True
+
+        return "", "", False
+
+    def _parent_path(self, path: str) -> str | None:
+        """Obtiene la ruta relativa del padre o None cuando es la raíz."""
+
+        if not path:
+            return None
+
+        parent = os.path.dirname(path)
+        return parent if parent != path else None
 
     def _on_selection_change(self, event: tk.Event) -> None:
         """Muestra el archivo seleccionado en el panel inferior correspondiente."""
