@@ -10,6 +10,7 @@ está disponible.
 import json
 import os
 import tkinter as tk
+from typing import cast
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 
@@ -299,7 +300,10 @@ class FolderComparator(tk.Tk):
     def _on_selection_change(self, event: tk.Event) -> None:
         """Muestra el archivo seleccionado en el panel inferior correspondiente."""
 
-        tree = event.widget
+        if not isinstance(event.widget, ttk.Treeview):
+            return
+
+        tree = cast(ttk.Treeview, event.widget)
         if tree not in (self.left_tree, self.right_tree):
             return
 
