@@ -2,7 +2,7 @@ import xml.etree.ElementTree as ET
 from tkinter import Tk, filedialog
 import os
 
-def resolve_target_path(rels_path, target):
+def resolve_target_path(rels_path, target, package_root=None):
     """
     Convierte un Target relativo en una ruta absoluta real.
     Ejemplo:
@@ -19,12 +19,22 @@ def resolve_target_path(rels_path, target):
     else:
         base_dir = rels_dir
 
+    # Si el target empieza con "/" significa ruta absoluta dentro del paquete
+    # (no ruta absoluta del sistema). Se resuelve desde la carpeta raíz seleccionada.
+    if target.startswith("/"):
+        if not package_root:
+            # Sin carpeta raíz no podemos resolver correctamente; devolvemos ruta relativa
+            # a la base para evitar confundir con rutas del sistema.
+            return os.path.normpath(os.path.join(base_dir, target.lstrip("/")))
+
+        return os.path.normpath(os.path.join(package_root, target.lstrip("/")))
+
     # Resolver rutas ../ y subcarpetas
     full_path = os.path.normpath(os.path.join(base_dir, target))
     return full_path
 
 
-def validate_rels_file(path):
+def validate_rels_file(path, package_root):
     print(f"\n[INFO] Iniciando validación del archivo: {os.path.basename(path)}")
 
     errors = []
@@ -93,7 +103,7 @@ def validate_rels_file(path):
             print(f"[OK] Target presente: {rtarget}")
 
             #  NUEVO: verificar si el archivo Target realmente existe
-            resolved_path = resolve_target_path(path, rtarget)
+            resolved_path = resolve_target_path(path, rtarget, package_root)
             print(f"[CHECK] Verificando existencia del archivo: {resolved_path}")
 
             if os.path.exists(resolved_path):
@@ -119,9 +129,18 @@ def validate_rels_file(path):
 def main():
     Tk().withdraw()
 
+    base_dir = filedialog.askdirectory(
+        title="Seleccionar carpeta raíz del paquete (padre de todo el XML)"
+    )
+
+    if not base_dir:
+        print("No se seleccionó la carpeta raíz. Operación cancelada.")
+        return
+
     paths = filedialog.askopenfilenames(
         title="Seleccionar archivos .rels",
-        filetypes=[("Archivos RELS", "*.rels"), ("Todos los archivos", "*.*")]
+        filetypes=[("Archivos RELS", "*.rels"), ("Todos los archivos", "*.*")],
+        initialdir=base_dir
     )
 
     if not paths:
@@ -129,7 +148,7 @@ def main():
         return
 
     for path in paths:
-        validate_rels_file(path)
+        validate_rels_file(path, base_dir)
 
 
 if __name__ == "__main__":
