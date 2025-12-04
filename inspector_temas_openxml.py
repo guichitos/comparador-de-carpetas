@@ -36,7 +36,11 @@ class ThemeFiles:
 
 
 def find_theme_files(base_dir: str) -> Iterable[ThemeFiles]:
-    """Encuentra rutas a ``theme1.xml`` y ``themeVariantManager.xml`` bajo carpetas ``theme/theme``."""
+    """Encuentra rutas a ``theme1.xml`` y ``themeVariantManager.xml`` bajo carpetas ``theme/theme``.
+
+    El archivo ``themeVariantManager.xml`` suele ubicarse en ``theme/theme/themeVariants``.
+    Si no existe, se omite de los resultados.
+    """
 
     for current_root, _, files in os.walk(base_dir):
         if os.path.basename(current_root) != "theme":
@@ -49,7 +53,9 @@ def find_theme_files(base_dir: str) -> Iterable[ThemeFiles]:
             continue
 
         theme_path = os.path.join(current_root, THEME_FILE_NAME)
-        variant_manager_path = os.path.join(current_root, VARIANT_MANAGER_FILE_NAME)
+        variant_manager_path = os.path.join(current_root, "themeVariants", VARIANT_MANAGER_FILE_NAME)
+        if not os.path.exists(variant_manager_path):
+            variant_manager_path = os.path.join(current_root, VARIANT_MANAGER_FILE_NAME)
         yield ThemeFiles(
             theme_path=theme_path,
             variant_manager_path=variant_manager_path if os.path.exists(variant_manager_path) else None,
