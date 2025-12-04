@@ -3,12 +3,13 @@
 Uso:
     python inspector_temas_openxml.py
 
-El script solicita al usuario seleccionar una carpeta mediante un diálogo de
-Tkinter. A partir de esa ruta busca subcarpetas con la estructura
-``theme/theme`` y, en cada una de ellas, abre el archivo ``theme1.xml``. Para
-cada archivo encontrado imprime la ruta y muestra el contenido del elemento
-``<a:extLst>`` si existe. Además, si en la misma carpeta se encuentra un archivo
-``themeVariantManager.xml``, también imprime su contenido completo.
+    El script solicita al usuario seleccionar una carpeta mediante un diálogo de
+    Tkinter. A partir de esa ruta busca subcarpetas con la estructura
+    ``theme/theme`` y, en cada una de ellas, abre el archivo ``theme1.xml``. Para
+    cada archivo encontrado imprime la ruta y muestra el contenido del elemento
+    ``<a:extLst>`` si existe. Además, si en la misma carpeta se encuentra un
+    archivo ``themeVariantManager.xml``, imprime su contenido completo una sola
+    vez al final.
 """
 from __future__ import annotations
 
@@ -120,6 +121,7 @@ def main() -> int:
         return 1
 
     found = False
+    variant_manager_path: str | None = None
     for theme_files in find_theme_files(base_dir):
         found = True
         print(f"Tema encontrado en: {theme_files.theme_path}")
@@ -130,15 +132,17 @@ def main() -> int:
             for content in contents:
                 print(f"  - {TARGET_TAG}: {content}")
 
-        if theme_files.variant_manager_path:
-            print("  - Contenido de themeVariantManager.xml:")
-            print(read_xml_as_string(theme_files.variant_manager_path))
-        else:
-            print("  - No se encontró themeVariantManager.xml en la carpeta.")
+        if variant_manager_path is None and theme_files.variant_manager_path:
+            variant_manager_path = theme_files.variant_manager_path
         print()
 
     if not found:
         print("No se encontraron carpetas theme/theme con un theme1.xml en la ruta indicada.")
+    elif variant_manager_path:
+        print("Contenido de themeVariantManager.xml:")
+        print(read_xml_as_string(variant_manager_path))
+    else:
+        print("No se encontró themeVariantManager.xml en la carpeta.")
     return 0
 
 
