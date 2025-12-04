@@ -84,10 +84,27 @@ def get_target_elements(file_path: str) -> list[str]:
 
     root = tree.getroot()
     matches: list[str] = []
+    target_tag_plain = TARGET_TAG.split(":")[-1]
+
     for element in root.iter():
         tag_without_ns = element.tag.split("}", maxsplit=1)[-1]
-        if tag_without_ns == TARGET_TAG or tag_without_ns == TARGET_TAG.split(":")[-1]:
+        if tag_without_ns not in (TARGET_TAG, target_tag_plain):
+            continue
+
+        theme_family = next(
+            (
+                child
+                for child in element.iter()
+                if child.tag.split("}", maxsplit=1)[-1] == "themeFamily"
+            ),
+            None,
+        )
+
+        if theme_family is not None:
+            matches.append(ET.tostring(theme_family, encoding="unicode"))
+        else:
             matches.append(ET.tostring(element, encoding="unicode"))
+
     return matches
 
 
@@ -124,13 +141,14 @@ def main() -> int:
     variant_manager_path: str | None = None
     for theme_files in find_theme_files(base_dir):
         found = True
-        print(f"Tema encontrado en: {theme_files.theme_path}")
         contents = get_target_elements(theme_files.theme_path)
         if not contents:
-            print(f"  - No se encontró la etiqueta {TARGET_TAG} en el archivo.")
+            print(
+                f"Tema sin {TARGET_TAG}: {theme_files.theme_path}",
+            )
         else:
             for content in contents:
-                print(f"  - {TARGET_TAG}: {content}")
+                print(f"{content}  | origen: {theme_files.theme_path}")
 
         if variant_manager_path is None and theme_files.variant_manager_path:
             variant_manager_path = theme_files.variant_manager_path
