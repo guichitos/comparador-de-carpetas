@@ -3,7 +3,9 @@
 El script permite seleccionar la carpeta raíz del paquete y luego elegir un
 archivo [Content_Types].xml. Verifica que cada etiqueta <Default> y <Override>
 cuente con sus atributos requeridos y que todos los PartName referenciados
-apuntan a archivos existentes dentro del paquete.
+apuntan a archivos existentes dentro del paquete. Además, si se encuentra el
+recurso ``themeVariantManager.xml`` dentro de los overrides, se imprime su
+contenido para facilitar la inspección.
 """
 
 import os
@@ -72,6 +74,7 @@ def validate_content_types(path: str, base_dir: str) -> list[str]:
 
     print("\n[INFO] Validando elementos <Override>...")
     partnames_seen: set[str] = set()
+    theme_variant_part: str | None = None
     for idx, override in enumerate(overrides, start=1):
         print(f"\n--- Verificando <Override> #{idx} ---")
         part_name = override.get("PartName")
@@ -82,6 +85,8 @@ def validate_content_types(path: str, base_dir: str) -> list[str]:
             print(msg)
             errors.append(msg)
         else:
+            if part_name.lower().endswith("themevariantmanager.xml"):
+                theme_variant_part = part_name
             print(f"[OK] PartName presente: {part_name}")
             if part_name in partnames_seen:
                 msg = f"[ERROR] PartName duplicado: {part_name}"
@@ -117,8 +122,41 @@ def validate_content_types(path: str, base_dir: str) -> list[str]:
     else:
         print(f"[ERRORES] Se encontraron {len(errors)} problema(s).")
 
+    if theme_variant_part:
+        print_theme_variant_manager(base_dir, theme_variant_part)
+    else:
+        print(
+            "\n[INFO] No se encontró una entrada para themeVariantManager.xml en <Override>."
+        )
+
     print("===========================================\n")
     return errors
+
+
+def print_theme_variant_manager(base_dir: str, part_name: str) -> None:
+    """Muestra el contenido del archivo themeVariantManager.xml si existe."""
+
+    resolved_path = resolve_part_path(base_dir, part_name)
+    print(f"\n[INFO] Ubicación detectada para themeVariantManager.xml: {resolved_path}")
+
+    if not os.path.exists(resolved_path):
+        print("[ERROR] El archivo themeVariantManager.xml no existe en el paquete.")
+        return
+
+    print("[CHECK] Leyendo contenido de themeVariantManager.xml...")
+    try:
+        with open(resolved_path, "r", encoding="utf-8") as file:
+            content = file.read()
+    except UnicodeDecodeError:
+        print(
+            "[WARNING] No fue posible decodificar el archivo con UTF-8. Se leerá como binario."
+        )
+        with open(resolved_path, "rb") as file:
+            content = file.read().decode(errors="replace")
+
+    print("\n======= Contenido de themeVariantManager.xml =======")
+    print(content)
+    print("======= Fin de themeVariantManager.xml =======\n")
 
 
 def main() -> None:

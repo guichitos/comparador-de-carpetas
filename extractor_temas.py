@@ -78,6 +78,17 @@ def main() -> int:
         else:
             for content in contents:
                 print(f"  - {TARGET_TAG}: {content}")
+
+        variant_manager_path = os.path.join(os.path.dirname(theme_file), "themeVariantManager.xml")
+        if os.path.exists(variant_manager_path):
+            print("  - Se encontró themeVariantManager.xml. Contenido:")
+            try:
+                with open(variant_manager_path, "r", encoding="utf-8") as variant_file:
+                    print(variant_file.read())
+            except OSError as exc:
+                print(f"  - No se pudo leer themeVariantManager.xml: {exc}")
+        else:
+            print("  - No se encontró themeVariantManager.xml en esta carpeta.")
         print()
 
     if not found:
