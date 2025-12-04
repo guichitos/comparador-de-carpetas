@@ -24,7 +24,7 @@ import xml.etree.ElementTree as ET
 # otra clave concreta.
 TARGET_TAG = "a:extLst"
 THEME_FILE_NAME = "theme1.xml"
-VARIANT_MANAGER_FILE_NAME = "themeVariantManager.xml"
+VARIANT_MANAGER_FILE_NAMES = ["themeVariantManager.xml", "themeVarianManager.xml"]
 
 
 @dataclass
@@ -39,7 +39,9 @@ def find_theme_files(base_dir: str) -> Iterable[ThemeFiles]:
     """Encuentra rutas a ``theme1.xml`` y ``themeVariantManager.xml`` bajo carpetas ``theme/theme``.
 
     El archivo ``themeVariantManager.xml`` suele ubicarse en ``theme/theme/themeVariants``.
-    Si no existe, se omite de los resultados.
+    También puede aparecer en la carpeta raíz como ``themeVariants/themeVariantManager.xml``
+    (o con la variante sin la segunda "t"), por lo que se prueban ambas ubicaciones.
+    Si no existe en ninguna de ellas, se omite de los resultados.
     """
 
     for current_root, _, files in os.walk(base_dir):
@@ -53,12 +55,21 @@ def find_theme_files(base_dir: str) -> Iterable[ThemeFiles]:
             continue
 
         theme_path = os.path.join(current_root, THEME_FILE_NAME)
-        variant_manager_path = os.path.join(current_root, "themeVariants", VARIANT_MANAGER_FILE_NAME)
-        if not os.path.exists(variant_manager_path):
-            variant_manager_path = os.path.join(current_root, VARIANT_MANAGER_FILE_NAME)
+        candidate_paths = [
+            os.path.join(current_root, "themeVariants", file_name)
+            for file_name in VARIANT_MANAGER_FILE_NAMES
+        ] + [
+            os.path.join(current_root, file_name)
+            for file_name in VARIANT_MANAGER_FILE_NAMES
+        ] + [
+            os.path.join(base_dir, "themeVariants", file_name)
+            for file_name in VARIANT_MANAGER_FILE_NAMES
+        ]
+
+        variant_manager_path = next((path for path in candidate_paths if os.path.exists(path)), None)
         yield ThemeFiles(
             theme_path=theme_path,
-            variant_manager_path=variant_manager_path if os.path.exists(variant_manager_path) else None,
+            variant_manager_path=variant_manager_path,
         )
 
 
@@ -120,10 +131,10 @@ def main() -> int:
                 print(f"  - {TARGET_TAG}: {content}")
 
         if theme_files.variant_manager_path:
-            print(f"  - Contenido de {VARIANT_MANAGER_FILE_NAME}:")
+            print("  - Contenido de themeVariantManager.xml:")
             print(read_xml_as_string(theme_files.variant_manager_path))
         else:
-            print(f"  - No se encontró {VARIANT_MANAGER_FILE_NAME} en la carpeta.")
+            print("  - No se encontró themeVariantManager.xml en la carpeta.")
         print()
 
     if not found:
