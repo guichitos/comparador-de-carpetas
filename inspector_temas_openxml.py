@@ -259,6 +259,30 @@ def validate_variant_vids(variants: list[dict[str, str | None]], theme_families:
         )
 
 
+def validate_theme_ids(theme_families: list[dict[str, str | None]]) -> None:
+    """Comprueba que todos los ``id`` de ``themeFamily`` sean iguales entre sí."""
+
+    print("\nVerificación de ID entre todos los theme1.xml")
+
+    if not theme_families:
+        print("No se encontraron entradas de themeFamily para validar.")
+        return
+
+    sources_by_id: dict[str | None, list[str]] = {}
+    for family in theme_families:
+        theme_id = family.get("id")
+        sources_by_id.setdefault(theme_id, []).append(family.get("source") or "(origen desconocido)")
+
+    if len(sources_by_id) == 1:
+        only_id = next(iter(sources_by_id))
+        print(f"[OK] Todos los theme1.xml comparten el mismo id: {only_id}")
+        return
+
+    print("[ERROR] Se encontraron IDs distintos entre los theme1.xml:")
+    for theme_id, sources in sources_by_id.items():
+        print(f"  - id {theme_id}: {', '.join(sources)}")
+
+
 def read_xml_as_string(file_path: str) -> str:
     """Devuelve el XML completo del archivo indicado como cadena legible."""
 
@@ -316,8 +340,10 @@ def main() -> int:
         variants = extract_variant_vids(variant_manager_path)
         validate_variant_vids(variants, all_theme_families)
         validate_variant_manager_links(variant_manager_path, base_dir)
+        validate_theme_ids(all_theme_families)
     else:
         print("No se encontró themeVariantManager.xml en la carpeta.")
+        validate_theme_ids(all_theme_families)
     return 0
 
 
