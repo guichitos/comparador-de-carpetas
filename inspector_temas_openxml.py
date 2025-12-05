@@ -249,7 +249,7 @@ def validate_variant_vids(variants: list[dict[str, str | None]], theme_families:
             continue
 
         if len(linked_families) > 1:
-            sources = ", ".join(family.get("source", "") for family in linked_families)
+            sources = ", ".join((family.get("source") or "") for family in linked_families)
             print(f"[ERROR] El VID {vid} aparece repetido en varios temas: {sources}")
             continue
 
